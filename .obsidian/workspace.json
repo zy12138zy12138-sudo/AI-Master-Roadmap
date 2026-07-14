@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "13_学习日志/2026-07-14《第0课：AI学习环境搭建》.md",
+                "file": "00_学习计划/AI-Master Roadmap.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "2026-07-14《第0课：AI学习环境搭建》"
+              "title": "AI-Master Roadmap"
             }
           }
         ]
@@ -182,13 +182,16 @@
   },
   "active": "e2d56eaf6da9e368",
   "lastOpenFiles": [
+    "12_资源收藏/images/学习计划roadmap表格.png",
+    "00_学习计划/AI-Master Roadmap.md",
+    "12_资源收藏/images",
+    "13_学习日志/2026-07-14《第0课：AI学习环境搭建》.md",
     "99_模板/每天学习日志模板20260714.md",
     "02_Prompt工程/学习路线设计 Prompt.md",
     "02_Prompt工程/学习日志生成 Prompt.md",
     "02_Prompt工程/学习助手 Prompt.md",
     "02_Prompt工程/知识总结 Prompt.md",
     "README.md",
-    "13_学习日志/2026-07-14《第0课：AI学习环境搭建》.md",
     "13_学习日志/Git-GitHub测试.md.md",
     "05_Python学习/2026-07-14.md",
     "05_Python学习"
