@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "13_学习日志/Git-GitHub测试.md.md",
+                "file": "13_学习日志/2026-07-14《第0课：AI学习环境搭建》.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Git-GitHub测试.md"
+              "title": "2026-07-14《第0课：AI学习环境搭建》"
             }
           }
         ]
@@ -182,7 +182,13 @@
   },
   "active": "e2d56eaf6da9e368",
   "lastOpenFiles": [
-    "13_学习日志/2026-07-14.md",
+    "99_模板/每天学习日志模板20260714.md",
+    "02_Prompt工程/学习路线设计 Prompt.md",
+    "02_Prompt工程/学习日志生成 Prompt.md",
+    "02_Prompt工程/学习助手 Prompt.md",
+    "02_Prompt工程/知识总结 Prompt.md",
+    "README.md",
+    "13_学习日志/2026-07-14《第0课：AI学习环境搭建》.md",
     "13_学习日志/Git-GitHub测试.md.md",
     "05_Python学习/2026-07-14.md",
     "05_Python学习"
