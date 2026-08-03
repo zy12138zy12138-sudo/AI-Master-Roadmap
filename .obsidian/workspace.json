@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "08_Agent智能体/personalOS/技术方案/Personal_OS_MVP_无API方案_全套文档_V2.0.md",
+                "file": "08_Agent智能体/personalOS/验收文档.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Personal_OS_MVP_无API方案_全套文档_V2.0"
+              "title": "验收文档"
             }
           }
         ]
@@ -182,6 +182,8 @@
   },
   "active": "e2d56eaf6da9e368",
   "lastOpenFiles": [
+    "08_Agent智能体/personalOS/技术方案/Personal_OS_MVP_无API方案_全套文档_V2.0.md",
+    "08_Agent智能体/personalOS/验收文档.md",
     "14_Code代码库/personalOS/node_modules/string-width/index.js",
     "14_Code代码库/personalOS/node_modules/string-width/package.json",
     "14_Code代码库/personalOS/node_modules/expo-system-ui/package.json",
@@ -192,7 +194,6 @@
     "14_Code代码库/personalOS/node_modules/@expo/fingerprint/node_modules/semver/bin/semver.js",
     "14_Code代码库/personalOS/node_modules/@expo/fingerprint/node_modules/semver/bin",
     "14_Code代码库/personalOS/node_modules/@expo/prebuild-config/node_modules/semver/bin/semver.js",
-    "14_Code代码库/personalOS/node_modules/@expo/prebuild-config/node_modules/semver/bin",
     "14_Code代码库/personalOS/node_modules/stacktrace-parser/README.md",
     "14_Code代码库/personalOS/node_modules/possible-typed-array-names/README.md",
     "14_Code代码库/personalOS/node_modules/possible-typed-array-names/CHANGELOG.md",
@@ -217,7 +218,6 @@
     "14_Code代码库/personalOS/node_modules/call-bound/CHANGELOG.md",
     "14_Code代码库/personalOS/node_modules/function-bind/README.md",
     "14_Code代码库/personalOS/node_modules/function-bind/CHANGELOG.md",
-    "14_Code代码库/personalOS/node_modules/get-intrinsic/README.md",
     "14_Code代码库/personalOS/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/loader.png",
     "14_Code代码库/personalOS/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/close.png",
     "14_Code代码库/personalOS/node_modules/react-native/Libraries/LogBox/UI/LogBoxImages/chevron-right.png",
