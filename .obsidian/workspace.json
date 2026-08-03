@@ -11,14 +11,13 @@
             "id": "e2d56eaf6da9e368",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "bases",
               "state": {
-                "file": "00_学习计划/AI-Master Roadmap.md",
-                "mode": "source",
-                "source": false
+                "file": "未命名.base",
+                "viewName": "表格"
               },
-              "icon": "lucide-file",
-              "title": "AI-Master Roadmap"
+              "icon": "lucide-table",
+              "title": "未命名"
             }
           }
         ]
@@ -182,8 +181,18 @@
   },
   "active": "e2d56eaf6da9e368",
   "lastOpenFiles": [
-    "12_资源收藏/images/学习计划roadmap表格.png",
+    "14_Code代码库/personalOS",
+    "08_Agent智能体/技术方案/Personal_OS_MVP_无API方案_全套文档_V2.0.md",
+    "08_Agent智能体/personalOS/技术方案/Personal_OS_MVP_无API方案_全套文档_V2.0.md",
+    "08_Agent智能体/personalOS/技术方案",
+    "08_Agent智能体/personalOS",
+    "未命名.base",
+    "08_Agent智能体/技术方案/未命名.md",
+    "13_学习日志/2026-07-25《第1课：AI世界观（AI基础认知》.md",
+    "08_Agent智能体/技术方案",
     "00_学习计划/AI-Master Roadmap.md",
+    "01_AI基础/未命名.md",
+    "12_资源收藏/images/学习计划roadmap表格.png",
     "12_资源收藏/images",
     "13_学习日志/2026-07-14《第0课：AI学习环境搭建》.md",
     "99_模板/每天学习日志模板20260714.md",
