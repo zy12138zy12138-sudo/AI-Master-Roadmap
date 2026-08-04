@@ -3,9 +3,15 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { PERSONAL_OS_PROJECT_ID } from '@/src/database/migrations';
 import { isLocalDateKey } from '@/src/utils/local-date';
 
-export type TaskPriority = 'P0' | 'P1';
+export const TASK_PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const;
+
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export const DEFAULT_TASK_PRIORITY: TaskPriority = 'P2';
 
 export const MAX_TASK_TITLE_LENGTH = 100;
+
+const TASK_PRIORITY_VALUES: ReadonlySet<string> = new Set(TASK_PRIORITIES);
 
 export type PersonalOsTask = {
   id: string;
@@ -28,7 +34,7 @@ type TaskRow = {
   id: string;
   project_id: string | null;
   title: string;
-  priority: TaskPriority;
+  priority: string;
   completed: number;
   scheduled_date: string | null;
   sort_order: number;
@@ -58,9 +64,9 @@ function normalizeTaskTitle(title: string): string {
   return normalizedTitle;
 }
 
-function assertTaskPriority(priority: TaskPriority): void {
-  if (priority !== 'P0' && priority !== 'P1') {
-    throw new Error('任务优先级必须是 P0 或 P1。');
+function assertTaskPriority(priority: string): asserts priority is TaskPriority {
+  if (!TASK_PRIORITY_VALUES.has(priority)) {
+    throw new Error(`任务优先级无效：${priority}`);
   }
 }
 
@@ -71,6 +77,8 @@ function assertLocalDateKey(dateKey: string): void {
 }
 
 function mapTaskRow(row: TaskRow): PersonalOsTask {
+  assertTaskPriority(row.priority);
+
   return {
     id: row.id,
     projectId: row.project_id,
@@ -104,7 +112,14 @@ export async function getPersonalOsTasks(
      FROM tasks
      WHERE project_id = ?
        AND scheduled_date = ?
-     ORDER BY sort_order ASC`,
+     ORDER BY CASE priority
+       WHEN 'P0' THEN 0
+       WHEN 'P1' THEN 1
+       WHEN 'P2' THEN 2
+       WHEN 'P3' THEN 3
+       ELSE 4
+     END ASC,
+     sort_order ASC`,
     PERSONAL_OS_PROJECT_ID,
     scheduledDate,
   );

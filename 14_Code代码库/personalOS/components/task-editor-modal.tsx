@@ -14,6 +14,7 @@ import {
 
 import {
   MAX_TASK_TITLE_LENGTH,
+  TASK_PRIORITIES,
   type TaskEditorValues,
   type TaskPriority,
 } from '@/src/database/tasks';
@@ -50,6 +51,13 @@ const PALETTES = {
     accentSoft: '#1C2F50',
     onAccent: '#0D1117',
   },
+};
+
+const PRIORITY_DESCRIPTIONS: Record<TaskPriority, string> = {
+  P0: '当天必须完成（建议 1—2 项）',
+  P1: '推动核心目标的重要任务',
+  P2: '常规执行任务（默认）',
+  P3: '低收益、提醒或有余力再做',
 };
 
 export function TaskEditorModal({
@@ -135,11 +143,12 @@ export function TaskEditorModal({
 
           <Text style={[styles.label, styles.priorityLabel, { color: palette.text }]}>优先级</Text>
           <View style={styles.priorityOptions}>
-            {(['P0', 'P1'] as const).map((option) => {
+            {TASK_PRIORITIES.map((option) => {
               const selected = priority === option;
 
               return (
                 <Pressable
+                  accessibilityLabel={`${option}，${PRIORITY_DESCRIPTIONS[option]}`}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected, disabled: saving }}
                   disabled={saving}
@@ -155,7 +164,7 @@ export function TaskEditorModal({
                   ]}>
                   <MaterialIcons
                     name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
-                    size={19}
+                    size={16}
                     color={selected ? palette.accent : palette.secondaryText}
                   />
                   <Text
@@ -168,6 +177,22 @@ export function TaskEditorModal({
                 </Pressable>
               );
             })}
+          </View>
+          <View
+            style={[
+              styles.priorityGuide,
+              { backgroundColor: palette.inputBackground, borderColor: palette.border },
+            ]}>
+            {TASK_PRIORITIES.map((option) => (
+              <View key={option} style={styles.priorityGuideRow}>
+                <Text style={[styles.priorityGuideLevel, { color: palette.text }]}>
+                  {option}
+                </Text>
+                <Text style={[styles.priorityGuideText, { color: palette.secondaryText }]}>
+                  {PRIORITY_DESCRIPTIONS[option]}
+                </Text>
+              </View>
+            ))}
           </View>
 
           <View style={styles.actions}>
@@ -255,21 +280,45 @@ const styles = StyleSheet.create({
   },
   priorityOptions: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 6,
   },
   priorityOption: {
     alignItems: 'center',
-    borderRadius: 11,
+    borderRadius: 9,
     borderWidth: 1,
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
-    minHeight: 46,
+    minHeight: 40,
+    paddingHorizontal: 2,
   },
   priorityOptionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    marginLeft: 7,
+    marginLeft: 4,
+  },
+  priorityGuide: {
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 5,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  priorityGuideRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+  },
+  priorityGuideLevel: {
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 17,
+    width: 28,
+  },
+  priorityGuideText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
   },
   actions: {
     flexDirection: 'row',

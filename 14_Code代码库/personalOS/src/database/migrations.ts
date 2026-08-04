@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { getLocalDateKey } from '@/src/utils/local-date';
 
 export const DATABASE_NAME = 'personal-os.db';
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 export const PERSONAL_OS_PROJECT_ID = 'project-personal-os-mvp';
 
 type SeedTask = {
@@ -48,6 +48,17 @@ const SEED_TASKS: SeedTask[] = [
 
 type UserVersionRow = {
   user_version: number;
+};
+
+type RowCount = {
+  count: number;
+};
+
+type ForeignKeyViolation = {
+  table: string;
+  rowid: number;
+  parent: string;
+  fkid: number;
 };
 
 async function migrateFromVersion0To1(db: SQLiteDatabase): Promise<void> {
@@ -144,6 +155,85 @@ async function migrateFromVersion1To2(db: SQLiteDatabase): Promise<void> {
   });
 }
 
+async function migrateFromVersion2To3(db: SQLiteDatabase): Promise<void> {
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const beforeMigration = await txn.getFirstAsync<RowCount>(
+      'SELECT COUNT(*) AS count FROM tasks',
+    );
+
+    if (!beforeMigration) {
+      throw new Error('升级数据库前无法读取任务数量。');
+    }
+
+    await txn.execAsync(`
+      CREATE TABLE tasks_v3 (
+        id TEXT PRIMARY KEY,
+        project_id TEXT,
+        title TEXT NOT NULL,
+        priority TEXT NOT NULL CHECK (priority IN ('P0', 'P1', 'P2', 'P3')),
+        completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+        scheduled_date TEXT,
+        sort_order INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+          ON UPDATE CASCADE
+          ON DELETE SET NULL
+      );
+
+      INSERT INTO tasks_v3 (
+        id,
+        project_id,
+        title,
+        priority,
+        completed,
+        scheduled_date,
+        sort_order,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        project_id,
+        title,
+        priority,
+        completed,
+        scheduled_date,
+        sort_order,
+        created_at,
+        updated_at
+      FROM tasks;
+
+      DROP TABLE tasks;
+      ALTER TABLE tasks_v3 RENAME TO tasks;
+
+      CREATE INDEX IF NOT EXISTS idx_tasks_project_sort
+        ON tasks(project_id, sort_order);
+
+      CREATE INDEX IF NOT EXISTS idx_tasks_project_date_sort
+        ON tasks(project_id, scheduled_date, sort_order);
+    `);
+
+    const afterMigration = await txn.getFirstAsync<RowCount>(
+      'SELECT COUNT(*) AS count FROM tasks',
+    );
+
+    if (!afterMigration || afterMigration.count !== beforeMigration.count) {
+      throw new Error('数据库升级后的任务数量与升级前不一致。');
+    }
+
+    const foreignKeyViolations = await txn.getAllAsync<ForeignKeyViolation>(
+      'PRAGMA foreign_key_check(tasks)',
+    );
+
+    if (foreignKeyViolations.length > 0) {
+      throw new Error('数据库升级后检测到任务项目关系异常。');
+    }
+
+    await txn.execAsync('PRAGMA user_version = 3;');
+  });
+}
+
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA journal_mode = WAL;');
   await db.execAsync('PRAGMA foreign_keys = ON;');
@@ -165,6 +255,11 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   if (currentVersion === 1) {
     await migrateFromVersion1To2(db);
     currentVersion = 2;
+  }
+
+  if (currentVersion === 2) {
+    await migrateFromVersion2To3(db);
+    currentVersion = 3;
   }
 
   if (currentVersion !== DATABASE_VERSION) {

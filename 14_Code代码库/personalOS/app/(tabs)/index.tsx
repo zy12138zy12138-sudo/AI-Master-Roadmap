@@ -15,10 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { TaskEditorModal } from '@/components/task-editor-modal';
 import {
   createPersonalOsTask,
+  DEFAULT_TASK_PRIORITY,
   deletePersonalOsTask,
   getPersonalOsTasks,
   type PersonalOsTask,
   type TaskEditorValues,
+  type TaskPriority,
   updatePersonalOsTask,
   updateTaskCompleted,
 } from '@/src/database/tasks';
@@ -29,7 +31,7 @@ type EditorMode = 'create' | 'edit';
 
 const DEFAULT_EDITOR_VALUES: TaskEditorValues = {
   title: '',
-  priority: 'P1',
+  priority: DEFAULT_TASK_PRIORITY,
 };
 
 const PALETTES = {
@@ -48,6 +50,10 @@ const PALETTES = {
     p0Background: '#FEE4E2',
     p1Text: '#B54708',
     p1Background: '#FEF0C7',
+    p2Text: '#175CD3',
+    p2Background: '#D1E9FF',
+    p3Text: '#475467',
+    p3Background: '#EAECF0',
     completed: '#98A2B3',
   },
   dark: {
@@ -65,6 +71,10 @@ const PALETTES = {
     p0Background: '#4A1D1F',
     p1Text: '#FEC84B',
     p1Background: '#473510',
+    p2Text: '#84ADFF',
+    p2Background: '#102A56',
+    p3Text: '#D0D5DD',
+    p3Background: '#344054',
     completed: '#768390',
   },
 };
@@ -78,6 +88,12 @@ export default function TodayScreen() {
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
   const palette = PALETTES[colorScheme === 'dark' ? 'dark' : 'light'];
+  const priorityColors: Record<TaskPriority, { background: string; text: string }> = {
+    P0: { background: palette.p0Background, text: palette.p0Text },
+    P1: { background: palette.p1Background, text: palette.p1Text },
+    P2: { background: palette.p2Background, text: palette.p2Text },
+    P3: { background: palette.p3Background, text: palette.p3Text },
+  };
   const todayDate = getLocalDateKey();
   const [tasks, setTasks] = useState<PersonalOsTask[]>([]);
   const [taskLoadState, setTaskLoadState] = useState<TaskLoadState>('loading');
@@ -396,6 +412,7 @@ export default function TodayScreen() {
               ]}>
               {tasks.map((task, index) => {
                 const isBusy = busyTaskIDs.has(task.id);
+                const priorityColor = priorityColors[task.priority];
 
                 return (
                   <View
@@ -444,15 +461,12 @@ export default function TodayScreen() {
                     <View
                       style={[
                         styles.priorityBadge,
-                        {
-                          backgroundColor:
-                            task.priority === 'P0' ? palette.p0Background : palette.p1Background,
-                        },
+                        { backgroundColor: priorityColor.background },
                       ]}>
                       <Text
                         style={[
                           styles.priorityText,
-                          { color: task.priority === 'P0' ? palette.p0Text : palette.p1Text },
+                          { color: priorityColor.text },
                         ]}>
                         {task.priority}
                       </Text>
@@ -513,7 +527,7 @@ export default function TodayScreen() {
                 pressed ? styles.pressed : undefined,
               ]}>
               <MaterialIcons name="chat-bubble-outline" size={22} color={palette.accent} />
-              <Text style={[styles.actionText, { color: palette.text }]}>ChatGPT快捷助手</Text>
+              <Text style={[styles.actionText, { color: palette.text }]}>DeepSeek快捷助手</Text>
             </Pressable>
           </View>
         </ScrollView>
