@@ -1,7 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { getLocalDateKey } from '@/src/utils/local-date';
+
 export const DATABASE_NAME = 'personal-os.db';
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 export const PERSONAL_OS_PROJECT_ID = 'project-personal-os-mvp';
 
 type SeedTask = {
@@ -48,27 +50,7 @@ type UserVersionRow = {
   user_version: number;
 };
 
-export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
-  await db.execAsync('PRAGMA journal_mode = WAL;');
-  await db.execAsync('PRAGMA foreign_keys = ON;');
-
-  const versionRow = await db.getFirstAsync<UserVersionRow>('PRAGMA user_version');
-  const currentVersion = versionRow?.user_version ?? 0;
-
-  if (currentVersion > DATABASE_VERSION) {
-    throw new Error(
-      `数据库版本 ${currentVersion} 高于应用支持的版本 ${DATABASE_VERSION}。`,
-    );
-  }
-
-  if (currentVersion === DATABASE_VERSION) {
-    return;
-  }
-
-  if (currentVersion !== 0) {
-    throw new Error(`暂不支持从数据库版本 ${currentVersion} 迁移。`);
-  }
-
+async function migrateFromVersion0To1(db: SQLiteDatabase): Promise<void> {
   await db.withExclusiveTransactionAsync(async (txn) => {
     await txn.execAsync(`
       CREATE TABLE IF NOT EXISTS projects (
@@ -137,4 +119,55 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
 
     await txn.execAsync('PRAGMA user_version = 1;');
   });
+}
+
+async function migrateFromVersion1To2(db: SQLiteDatabase): Promise<void> {
+  const migrationDate = getLocalDateKey();
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_project_date_sort
+        ON tasks(project_id, scheduled_date, sort_order);
+    `);
+
+    for (const task of SEED_TASKS) {
+      await txn.runAsync(
+        `UPDATE tasks
+         SET scheduled_date = ?
+         WHERE id = ? AND scheduled_date IS NULL`,
+        migrationDate,
+        task.id,
+      );
+    }
+
+    await txn.execAsync('PRAGMA user_version = 2;');
+  });
+}
+
+export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync('PRAGMA journal_mode = WAL;');
+  await db.execAsync('PRAGMA foreign_keys = ON;');
+
+  const versionRow = await db.getFirstAsync<UserVersionRow>('PRAGMA user_version');
+  let currentVersion = versionRow?.user_version ?? 0;
+
+  if (currentVersion > DATABASE_VERSION) {
+    throw new Error(
+      `数据库版本 ${currentVersion} 高于应用支持的版本 ${DATABASE_VERSION}。`,
+    );
+  }
+
+  if (currentVersion === 0) {
+    await migrateFromVersion0To1(db);
+    currentVersion = 1;
+  }
+
+  if (currentVersion === 1) {
+    await migrateFromVersion1To2(db);
+    currentVersion = 2;
+  }
+
+  if (currentVersion !== DATABASE_VERSION) {
+    throw new Error(`暂不支持从数据库版本 ${currentVersion} 迁移。`);
+  }
 }
