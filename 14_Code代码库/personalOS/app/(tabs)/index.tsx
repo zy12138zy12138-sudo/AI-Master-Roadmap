@@ -1,5 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useState } from 'react';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -11,22 +12,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Priority = 'P0' | 'P1';
+import {
+  getPersonalOsTasks,
+  type PersonalOsTask,
+  updateTaskCompleted,
+} from '@/src/database/tasks';
 
-type TodayTask = {
-  id: number;
-  title: string;
-  priority: Priority;
-  completed: boolean;
-};
-
-const INITIAL_TASKS: TodayTask[] = [
-  { id: 1, title: '检查 Windows 开发环境', priority: 'P0', completed: false },
-  { id: 2, title: '创建 Personal OS Expo 项目', priority: 'P0', completed: false },
-  { id: 3, title: '在 iPhone Expo Go 中运行', priority: 'P0', completed: false },
-  { id: 4, title: '完成4个底部导航', priority: 'P1', completed: false },
-  { id: 5, title: '完成 Day 1验收', priority: 'P1', completed: false },
-];
+type TaskLoadState = 'loading' | 'ready' | 'error';
 
 const PALETTES = {
   light: {
@@ -65,16 +57,87 @@ function formatCurrentDate(date: Date) {
 }
 
 export default function TodayScreen() {
+  const db = useSQLiteContext();
   const colorScheme = useColorScheme();
   const palette = PALETTES[colorScheme === 'dark' ? 'dark' : 'light'];
-  const [tasks, setTasks] = useState<TodayTask[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<PersonalOsTask[]>([]);
+  const [taskLoadState, setTaskLoadState] = useState<TaskLoadState>('loading');
+  const [updatingTaskIDs, setUpdatingTaskIDs] = useState<Set<string>>(() => new Set());
+  const updatingTaskIDsRef = useRef<Set<string>>(new Set());
+  const isMountedRef = useRef(true);
 
-  const toggleTask = (taskID: number) => {
-    setTasks((currentTasks) =>
-      currentTasks.map((task) =>
-        task.id === taskID ? { ...task, completed: !task.completed } : task,
-      ),
-    );
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTasks() {
+      setTaskLoadState('loading');
+
+      try {
+        const storedTasks = await getPersonalOsTasks(db);
+
+        if (!cancelled) {
+          setTasks(storedTasks);
+          setTaskLoadState('ready');
+        }
+      } catch (error) {
+        console.error('读取今日任务失败', error);
+
+        if (!cancelled) {
+          setTaskLoadState('error');
+        }
+      }
+    }
+
+    void loadTasks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [db]);
+
+  const toggleTask = async (task: PersonalOsTask) => {
+    if (updatingTaskIDsRef.current.has(task.id)) {
+      return;
+    }
+
+    updatingTaskIDsRef.current.add(task.id);
+    setUpdatingTaskIDs((currentIDs) => new Set(currentIDs).add(task.id));
+
+    const nextCompleted = !task.completed;
+
+    try {
+      const updatedAt = await updateTaskCompleted(db, task.id, nextCompleted);
+
+      if (isMountedRef.current) {
+        setTasks((currentTasks) =>
+          currentTasks.map((currentTask) =>
+            currentTask.id === task.id
+              ? { ...currentTask, completed: nextCompleted, updatedAt }
+              : currentTask,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error(`更新任务完成状态失败：${task.id}`, error);
+    } finally {
+      updatingTaskIDsRef.current.delete(task.id);
+
+      if (isMountedRef.current) {
+        setUpdatingTaskIDs((currentIDs) => {
+          const nextIDs = new Set(currentIDs);
+          nextIDs.delete(task.id);
+          return nextIDs;
+        });
+      }
+    }
   };
 
   const showComingSoon = () => {
@@ -107,63 +170,100 @@ export default function TodayScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: palette.text }]}>今日任务</Text>
-          <Text style={[styles.taskCount, { color: palette.secondaryText }]}>共 {tasks.length} 项</Text>
+          {taskLoadState === 'ready' ? (
+            <Text style={[styles.taskCount, { color: palette.secondaryText }]}>共 {tasks.length} 项</Text>
+          ) : null}
         </View>
 
-        <View
-          style={[styles.taskList, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          {tasks.map((task, index) => (
-            <Pressable
-              accessibilityLabel={`${task.title}，优先级${task.priority}`}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: task.completed }}
-              key={task.id}
-              onPress={() => toggleTask(task.id)}
-              style={({ pressed }) => [
-                styles.taskRow,
-                index < tasks.length - 1
-                  ? { borderBottomColor: palette.border, borderBottomWidth: 1 }
-                  : undefined,
-                task.completed ? styles.completedRow : undefined,
-                pressed ? styles.pressed : undefined,
-              ]}>
-              <View
-                style={[
-                  styles.checkbox,
-                  { borderColor: task.completed ? palette.accent : palette.secondaryText },
-                  task.completed ? { backgroundColor: palette.accent } : undefined,
-                ]}>
-                {task.completed ? <MaterialIcons name="check" size={16} color="#FFFFFF" /> : null}
-              </View>
+        {taskLoadState === 'loading' ? (
+          <View
+            style={[
+              styles.statusCard,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}>
+            <Text style={[styles.statusText, { color: palette.secondaryText }]}>正在加载任务……</Text>
+          </View>
+        ) : null}
 
-              <Text
-                style={[
-                  styles.taskTitle,
-                  { color: task.completed ? palette.completed : palette.text },
-                  task.completed ? styles.completedText : undefined,
-                ]}>
-                {task.title}
-              </Text>
+        {taskLoadState === 'error' ? (
+          <View
+            style={[
+              styles.statusCard,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}>
+            <Text style={[styles.statusText, { color: palette.secondaryText }]}>
+              任务加载失败，请重新打开 App
+            </Text>
+          </View>
+        ) : null}
 
-              <View
-                style={[
-                  styles.priorityBadge,
-                  {
-                    backgroundColor:
-                      task.priority === 'P0' ? palette.p0Background : palette.p1Background,
-                  },
-                ]}>
-                <Text
-                  style={[
-                    styles.priorityText,
-                    { color: task.priority === 'P0' ? palette.p0Text : palette.p1Text },
+        {taskLoadState === 'ready' ? (
+          <View
+            style={[
+              styles.taskList,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}>
+            {tasks.map((task, index) => {
+              const isUpdating = updatingTaskIDs.has(task.id);
+
+              return (
+                <Pressable
+                  accessibilityLabel={`${task.title}，优先级${task.priority}`}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: task.completed, disabled: isUpdating }}
+                  disabled={isUpdating}
+                  key={task.id}
+                  onPress={() => void toggleTask(task)}
+                  style={({ pressed }) => [
+                    styles.taskRow,
+                    index < tasks.length - 1
+                      ? { borderBottomColor: palette.border, borderBottomWidth: 1 }
+                      : undefined,
+                    task.completed ? styles.completedRow : undefined,
+                    isUpdating ? styles.updatingRow : undefined,
+                    pressed ? styles.pressed : undefined,
                   ]}>
-                  {task.priority}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
+                  <View
+                    style={[
+                      styles.checkbox,
+                      { borderColor: task.completed ? palette.accent : palette.secondaryText },
+                      task.completed ? { backgroundColor: palette.accent } : undefined,
+                    ]}>
+                    {task.completed ? (
+                      <MaterialIcons name="check" size={16} color="#FFFFFF" />
+                    ) : null}
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.taskTitle,
+                      { color: task.completed ? palette.completed : palette.text },
+                      task.completed ? styles.completedText : undefined,
+                    ]}>
+                    {task.title}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.priorityBadge,
+                      {
+                        backgroundColor:
+                          task.priority === 'P0' ? palette.p0Background : palette.p1Background,
+                      },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.priorityText,
+                        { color: task.priority === 'P0' ? palette.p0Text : palette.p1Text },
+                      ]}>
+                      {task.priority}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
 
         <View style={styles.actions}>
           <Pressable
@@ -263,6 +363,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  statusCard: {
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 88,
+    padding: 16,
+  },
+  statusText: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
   taskRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -287,6 +399,9 @@ const styles = StyleSheet.create({
   },
   completedRow: {
     opacity: 0.62,
+  },
+  updatingRow: {
+    opacity: 0.72,
   },
   completedText: {
     textDecorationLine: 'line-through',
