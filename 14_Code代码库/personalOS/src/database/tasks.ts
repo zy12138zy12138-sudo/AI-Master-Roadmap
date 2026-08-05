@@ -50,6 +50,10 @@ type NextSortOrderRow = {
   next_sort_order: number;
 };
 
+type TaskScheduleRow = {
+  scheduled_date: string | null;
+};
+
 function normalizeTaskTitle(title: string): string {
   const normalizedTitle = title.trim();
 
@@ -197,24 +201,74 @@ export async function updatePersonalOsTask(
   db: SQLiteDatabase,
   taskID: string,
   values: TaskEditorValues,
+  scheduledDate: string,
 ): Promise<string> {
   const title = normalizeTaskTitle(values.title);
   assertTaskPriority(values.priority);
+  assertLocalDateKey(scheduledDate);
   const updatedAt = new Date().toISOString();
-  const result = await db.runAsync(
-    `UPDATE tasks
-     SET title = ?, priority = ?, updated_at = ?
-     WHERE id = ? AND project_id = ?`,
-    title,
-    values.priority,
-    updatedAt,
-    taskID,
-    PERSONAL_OS_PROJECT_ID,
-  );
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const currentTask = await txn.getFirstAsync<TaskScheduleRow>(
+      `SELECT scheduled_date
+       FROM tasks
+       WHERE id = ? AND project_id = ?`,
+      taskID,
+      PERSONAL_OS_PROJECT_ID,
+    );
 
-  if (result.changes !== 1) {
-    throw new Error(`未找到需要编辑的任务：${taskID}`);
-  }
+    if (!currentTask) {
+      throw new Error(`未找到需要编辑的任务：${taskID}`);
+    }
+
+    if (currentTask.scheduled_date === scheduledDate) {
+      const result = await txn.runAsync(
+        `UPDATE tasks
+         SET title = ?, priority = ?, updated_at = ?
+         WHERE id = ? AND project_id = ?`,
+        title,
+        values.priority,
+        updatedAt,
+        taskID,
+        PERSONAL_OS_PROJECT_ID,
+      );
+
+      if (result.changes !== 1) {
+        throw new Error(`未找到需要编辑的任务：${taskID}`);
+      }
+
+      return;
+    }
+
+    const sortOrderRow = await txn.getFirstAsync<NextSortOrderRow>(
+      `SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_sort_order
+       FROM tasks
+       WHERE project_id = ?
+         AND scheduled_date = ?`,
+      PERSONAL_OS_PROJECT_ID,
+      scheduledDate,
+    );
+
+    if (!sortOrderRow) {
+      throw new Error('无法确定目标日期的任务排序。');
+    }
+
+    const result = await txn.runAsync(
+      `UPDATE tasks
+       SET title = ?, priority = ?, scheduled_date = ?, sort_order = ?, updated_at = ?
+       WHERE id = ? AND project_id = ?`,
+      title,
+      values.priority,
+      scheduledDate,
+      sortOrderRow.next_sort_order,
+      updatedAt,
+      taskID,
+      PERSONAL_OS_PROJECT_ID,
+    );
+
+    if (result.changes !== 1) {
+      throw new Error(`未找到需要编辑的任务：${taskID}`);
+    }
+  });
 
   return updatedAt;
 }

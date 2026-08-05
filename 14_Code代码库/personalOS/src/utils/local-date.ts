@@ -8,6 +8,21 @@ export function getLocalDateKey(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+export function getLocalDateFromKey(value: string): Date {
+  if (!LOCAL_DATE_KEY_PATTERN.test(value)) {
+    throw new Error(`本地日期格式无效：${value}`);
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12);
+
+  if (getLocalDateKey(date) !== value) {
+    throw new Error(`本地日期无效：${value}`);
+  }
+
+  return date;
+}
+
 export function isLocalDateKey(value: string): boolean {
   return LOCAL_DATE_KEY_PATTERN.test(value);
 }

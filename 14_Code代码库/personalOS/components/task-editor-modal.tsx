@@ -1,14 +1,15 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useState } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 
@@ -18,39 +19,30 @@ import {
   type TaskEditorValues,
   type TaskPriority,
 } from '@/src/database/tasks';
+import { getLocalDateKey } from '@/src/utils/local-date';
 
 type TaskEditorModalProps = {
   initialValues: TaskEditorValues;
   mode: 'create' | 'edit';
   onCancel: () => void;
+  onSelectScheduledDate?: (date: Date) => void;
   onSave: (values: TaskEditorValues) => void;
   saving: boolean;
+  scheduledDate?: Date;
+  showScheduledDate?: boolean;
   visible: boolean;
 };
 
-const PALETTES = {
-  light: {
-    overlay: 'rgba(16, 24, 40, 0.48)',
-    surface: '#FFFFFF',
-    text: '#17202E',
-    secondaryText: '#667085',
-    border: '#D0D5DD',
-    inputBackground: '#FFFFFF',
-    accent: '#2563EB',
-    accentSoft: '#E8F0FF',
-    onAccent: '#FFFFFF',
-  },
-  dark: {
-    overlay: 'rgba(0, 0, 0, 0.68)',
-    surface: '#161B22',
-    text: '#F0F3F6',
-    secondaryText: '#9DA7B3',
-    border: '#3B434E',
-    inputBackground: '#0D1117',
-    accent: '#79A7FF',
-    accentSoft: '#1C2F50',
-    onAccent: '#0D1117',
-  },
+const PALETTE = {
+  overlay: 'rgba(16, 24, 40, 0.48)',
+  surface: '#FFFFFF',
+  text: '#17202E',
+  secondaryText: '#667085',
+  border: '#D0D5DD',
+  inputBackground: '#FFFFFF',
+  accent: '#2563EB',
+  accentSoft: '#E8F0FF',
+  onAccent: '#FFFFFF',
 };
 
 const PRIORITY_DESCRIPTIONS: Record<TaskPriority, string> = {
@@ -60,18 +52,66 @@ const PRIORITY_DESCRIPTIONS: Record<TaskPriority, string> = {
   P3: '低收益、提醒或有余力再做',
 };
 
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function normalizeCalendarDate(date: Date): Date {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(12, 0, 0, 0);
+  return normalizedDate;
+}
+
+function getCalendarMonth(date: Date): Date {
+  const month = normalizeCalendarDate(date);
+  month.setDate(1);
+  return month;
+}
+
+function shiftCalendarMonth(date: Date, months: number): Date {
+  const nextMonth = getCalendarMonth(date);
+  nextMonth.setMonth(nextMonth.getMonth() + months);
+  return nextMonth;
+}
+
+function getCalendarDays(month: Date): (Date | null)[] {
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const leadingEmptyDays = new Date(year, monthIndex, 1, 12).getDay();
+  const daysInMonth = new Date(year, monthIndex + 1, 0, 12).getDate();
+  const visibleCellCount = Math.ceil((leadingEmptyDays + daysInMonth) / 7) * 7;
+
+  return Array.from({ length: visibleCellCount }, (_, index) => {
+    const day = index - leadingEmptyDays + 1;
+    return day >= 1 && day <= daysInMonth ? new Date(year, monthIndex, day, 12) : null;
+  });
+}
+
+function formatCalendarDate(date: Date): string {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 星期${WEEKDAY_LABELS[date.getDay()]}`;
+}
+
 export function TaskEditorModal({
   initialValues,
   mode,
   onCancel,
+  onSelectScheduledDate,
   onSave,
   saving,
+  scheduledDate,
+  showScheduledDate = false,
   visible,
 }: TaskEditorModalProps) {
-  const colorScheme = useColorScheme();
-  const palette = PALETTES[colorScheme === 'dark' ? 'dark' : 'light'];
+  const palette = PALETTE;
   const [title, setTitle] = useState(initialValues.title);
   const [priority, setPriority] = useState<TaskPriority>(initialValues.priority);
+  const [scheduledDateDropdownOpen, setScheduledDateDropdownOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => getCalendarMonth(new Date()));
+  const today = normalizeCalendarDate(new Date());
+  const todayKey = getLocalDateKey(today);
+  const selectedDateKey = scheduledDate ? getLocalDateKey(scheduledDate) : undefined;
+  const calendarDays = getCalendarDays(calendarMonth);
+  const isCurrentMonth =
+    calendarMonth.getFullYear() === today.getFullYear() &&
+    calendarMonth.getMonth() === today.getMonth();
   const normalizedTitle = title.trim();
   const canSave = normalizedTitle.length > 0 && normalizedTitle.length <= MAX_TASK_TITLE_LENGTH;
   const titleHelper =
@@ -83,8 +123,19 @@ export function TaskEditorModal({
     if (visible) {
       setTitle(initialValues.title);
       setPriority(initialValues.priority);
+      setScheduledDateDropdownOpen(false);
     }
   }, [initialValues.priority, initialValues.title, visible]);
+
+  useEffect(() => {
+    if (visible) {
+      const initialCalendarDate =
+        scheduledDate && getLocalDateKey(scheduledDate) >= getLocalDateKey()
+          ? scheduledDate
+          : new Date();
+      setCalendarMonth(getCalendarMonth(initialCalendarDate));
+    }
+  }, [scheduledDate, visible]);
 
   const submit = () => {
     if (!saving && canSave) {
@@ -101,7 +152,11 @@ export function TaskEditorModal({
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.overlay, { backgroundColor: palette.overlay }]}>
-        <View style={[styles.card, { backgroundColor: palette.surface }]}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <View style={[styles.card, { backgroundColor: palette.surface }]}>
           <View style={styles.header}>
             <View style={[styles.headerIcon, { backgroundColor: palette.accentSoft }]}>
               <MaterialIcons
@@ -140,6 +195,133 @@ export function TaskEditorModal({
           <Text style={[styles.counter, { color: palette.secondaryText }]}>
             {titleHelper}
           </Text>
+
+          {showScheduledDate && scheduledDate ? (
+            <>
+              <Text style={[styles.label, styles.dateLabel, { color: palette.text }]}>任务日期</Text>
+              <Pressable
+                accessibilityLabel="选择任务日期"
+                accessibilityRole="button"
+                accessibilityState={{ expanded: scheduledDateDropdownOpen, disabled: saving }}
+                disabled={saving}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setScheduledDateDropdownOpen((currentValue) => !currentValue);
+                }}
+                style={({ pressed }) => [
+                  styles.dateField,
+                  { backgroundColor: palette.inputBackground, borderColor: palette.border },
+                  saving ? styles.disabled : undefined,
+                  pressed ? styles.pressed : undefined,
+                ]}>
+                <MaterialIcons name="event" size={19} color={palette.accent} />
+                <Text numberOfLines={1} style={[styles.dateValue, { color: palette.text }]}>
+                  {formatCalendarDate(scheduledDate)}
+                </Text>
+                <MaterialIcons
+                  name={scheduledDateDropdownOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                  size={22}
+                  color={palette.secondaryText}
+                />
+              </Pressable>
+              {scheduledDateDropdownOpen ? (
+                <View
+                  style={[
+                    styles.dateDropdown,
+                    { backgroundColor: palette.inputBackground, borderColor: palette.border },
+                  ]}>
+                  <View style={styles.calendarHeader}>
+                    <Pressable
+                      accessibilityLabel="上个月"
+                      accessibilityRole="button"
+                      disabled={saving || isCurrentMonth}
+                      hitSlop={8}
+                      onPress={() => setCalendarMonth((month) => shiftCalendarMonth(month, -1))}
+                      style={({ pressed }) => [
+                        styles.calendarNavigationButton,
+                        saving || isCurrentMonth ? styles.disabled : undefined,
+                        pressed ? styles.pressed : undefined,
+                      ]}>
+                      <MaterialIcons name="chevron-left" size={22} color={palette.accent} />
+                    </Pressable>
+                    <Text style={[styles.calendarMonthLabel, { color: palette.text }]}>
+                      {calendarMonth.getFullYear()}年{calendarMonth.getMonth() + 1}月
+                    </Text>
+                    <Pressable
+                      accessibilityLabel="下个月"
+                      accessibilityRole="button"
+                      disabled={saving}
+                      hitSlop={8}
+                      onPress={() => setCalendarMonth((month) => shiftCalendarMonth(month, 1))}
+                      style={({ pressed }) => [
+                        styles.calendarNavigationButton,
+                        saving ? styles.disabled : undefined,
+                        pressed ? styles.pressed : undefined,
+                      ]}>
+                      <MaterialIcons name="chevron-right" size={22} color={palette.accent} />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.calendarWeekdays}>
+                    {WEEKDAY_LABELS.map((weekday) => (
+                      <Text
+                        key={weekday}
+                        style={[styles.calendarWeekday, { color: palette.secondaryText }]}>
+                        {weekday}
+                      </Text>
+                    ))}
+                  </View>
+
+                  <View style={styles.calendarGrid}>
+                    {calendarDays.map((date, index) => {
+                      if (!date) {
+                        return <View key={`empty-${index}`} style={styles.calendarDayCell} />;
+                      }
+
+                      const dateKey = getLocalDateKey(date);
+                      const isPast = dateKey < todayKey;
+                      const isSelected = dateKey === selectedDateKey;
+
+                      return (
+                        <View key={dateKey} style={styles.calendarDayCell}>
+                          <Pressable
+                            accessibilityLabel={`${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`}
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: saving || isPast, selected: isSelected }}
+                            disabled={saving || isPast || !onSelectScheduledDate}
+                            hitSlop={7}
+                            onPress={() => {
+                              onSelectScheduledDate?.(date);
+                              setScheduledDateDropdownOpen(false);
+                            }}
+                            style={({ pressed }) => [
+                              styles.calendarDayButton,
+                              isSelected ? { backgroundColor: palette.accent } : undefined,
+                              isPast ? styles.calendarPastDay : undefined,
+                              pressed ? styles.pressed : undefined,
+                            ]}>
+                            <Text
+                              style={[
+                                styles.calendarDayText,
+                                {
+                                  color: isSelected
+                                    ? palette.onAccent
+                                    : isPast
+                                      ? palette.border
+                                      : palette.text,
+                                },
+                              ]}>
+                              {date.getDate()}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+            </>
+          ) : null}
 
           <Text style={[styles.label, styles.priorityLabel, { color: palette.text }]}>优先级</Text>
           <View style={styles.priorityOptions}>
@@ -224,7 +406,8 @@ export function TaskEditorModal({
               </Text>
             </Pressable>
           </View>
-        </View>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -233,8 +416,12 @@ export function TaskEditorModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   card: {
     borderRadius: 20,
@@ -274,6 +461,84 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 6,
     textAlign: 'right',
+  },
+  dateLabel: {
+    marginTop: 14,
+  },
+  dateField: {
+    alignItems: 'center',
+    borderRadius: 11,
+    borderWidth: 1,
+    flexDirection: 'row',
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  dateValue: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  dateDropdown: {
+    borderBottomLeftRadius: 11,
+    borderBottomRightRadius: 11,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    marginTop: -1,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  calendarHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  calendarNavigationButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 30,
+    justifyContent: 'center',
+    width: 34,
+  },
+  calendarMonthLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  calendarWeekdays: {
+    flexDirection: 'row',
+    marginTop: 2,
+  },
+  calendarWeekday: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '14.285714%',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 1,
+  },
+  calendarDayCell: {
+    alignItems: 'center',
+    height: 32,
+    justifyContent: 'center',
+    width: '14.285714%',
+  },
+  calendarDayButton: {
+    alignItems: 'center',
+    borderRadius: 15,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  calendarDayText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  calendarPastDay: {
+    opacity: 0.5,
   },
   priorityLabel: {
     marginTop: 14,

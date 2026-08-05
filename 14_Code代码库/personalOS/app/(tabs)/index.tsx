@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -7,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,7 +24,7 @@ import {
   updatePersonalOsTask,
   updateTaskCompleted,
 } from '@/src/database/tasks';
-import { getLocalDateKey } from '@/src/utils/local-date';
+import { getLocalDateFromKey, getLocalDateKey } from '@/src/utils/local-date';
 
 type TaskLoadState = 'loading' | 'ready' | 'error';
 type EditorMode = 'create' | 'edit';
@@ -34,49 +34,26 @@ const DEFAULT_EDITOR_VALUES: TaskEditorValues = {
   priority: DEFAULT_TASK_PRIORITY,
 };
 
-const PALETTES = {
-  light: {
-    background: '#F5F7FA',
-    surface: '#FFFFFF',
-    text: '#17202E',
-    secondaryText: '#667085',
-    border: '#E4E7EC',
-    accent: '#2563EB',
-    accentSoft: '#E8F0FF',
-    onAccent: '#FFFFFF',
-    danger: '#B42318',
-    dangerSoft: '#FEE4E2',
-    p0Text: '#B42318',
-    p0Background: '#FEE4E2',
-    p1Text: '#B54708',
-    p1Background: '#FEF0C7',
-    p2Text: '#175CD3',
-    p2Background: '#D1E9FF',
-    p3Text: '#475467',
-    p3Background: '#EAECF0',
-    completed: '#98A2B3',
-  },
-  dark: {
-    background: '#0D1117',
-    surface: '#161B22',
-    text: '#F0F3F6',
-    secondaryText: '#9DA7B3',
-    border: '#30363D',
-    accent: '#79A7FF',
-    accentSoft: '#1C2F50',
-    onAccent: '#0D1117',
-    danger: '#FDA29B',
-    dangerSoft: '#4A1D1F',
-    p0Text: '#FDA29B',
-    p0Background: '#4A1D1F',
-    p1Text: '#FEC84B',
-    p1Background: '#473510',
-    p2Text: '#84ADFF',
-    p2Background: '#102A56',
-    p3Text: '#D0D5DD',
-    p3Background: '#344054',
-    completed: '#768390',
-  },
+const PALETTE = {
+  background: '#F5F7FA',
+  surface: '#FFFFFF',
+  text: '#17202E',
+  secondaryText: '#667085',
+  border: '#E4E7EC',
+  accent: '#2563EB',
+  accentSoft: '#E8F0FF',
+  onAccent: '#FFFFFF',
+  danger: '#B42318',
+  dangerSoft: '#FEE4E2',
+  p0Text: '#B42318',
+  p0Background: '#FEE4E2',
+  p1Text: '#B54708',
+  p1Background: '#FEF0C7',
+  p2Text: '#175CD3',
+  p2Background: '#D1E9FF',
+  p3Text: '#475467',
+  p3Background: '#EAECF0',
+  completed: '#98A2B3',
 };
 
 function formatCurrentDate(date: Date) {
@@ -86,27 +63,32 @@ function formatCurrentDate(date: Date) {
 
 export default function TodayScreen() {
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const palette = PALETTES[colorScheme === 'dark' ? 'dark' : 'light'];
+  const palette = PALETTE;
   const priorityColors: Record<TaskPriority, { background: string; text: string }> = {
     P0: { background: palette.p0Background, text: palette.p0Text },
     P1: { background: palette.p1Background, text: palette.p1Text },
     P2: { background: palette.p2Background, text: palette.p2Text },
     P3: { background: palette.p3Background, text: palette.p3Text },
   };
-  const todayDate = getLocalDateKey();
   const [tasks, setTasks] = useState<PersonalOsTask[]>([]);
   const [taskLoadState, setTaskLoadState] = useState<TaskLoadState>('loading');
+  const [isRefreshingTasks, setIsRefreshingTasks] = useState(false);
   const [busyTaskIDs, setBusyTaskIDs] = useState<Set<string>>(() => new Set());
   const [editorMode, setEditorMode] = useState<EditorMode | null>(null);
   const [editingTaskID, setEditingTaskID] = useState<string | null>(null);
   const [editorInitialValues, setEditorInitialValues] =
     useState<TaskEditorValues>(DEFAULT_EDITOR_VALUES);
+  const [editorScheduledDate, setEditorScheduledDate] = useState(() => new Date());
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const editorScheduledDateRef = useRef(editorScheduledDate);
   const busyTaskIDsRef = useRef<Set<string>>(new Set());
   const isSavingTaskRef = useRef(false);
+  const isRefreshingTasksRef = useRef(false);
+  const hasLoadedTasksRef = useRef(false);
   const isMountedRef = useRef(true);
   const loadRequestIDRef = useRef(0);
+
+  editorScheduledDateRef.current = editorScheduledDate;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -120,9 +102,15 @@ export default function TodayScreen() {
   const loadTasks = useCallback(
     async (showLoading: boolean): Promise<boolean> => {
       const requestID = ++loadRequestIDRef.current;
+      const todayDate = getLocalDateKey();
 
       if (showLoading && isMountedRef.current) {
-        setTaskLoadState('loading');
+        if (hasLoadedTasksRef.current) {
+          isRefreshingTasksRef.current = true;
+          setIsRefreshingTasks(true);
+        } else {
+          setTaskLoadState('loading');
+        }
       }
 
       try {
@@ -131,6 +119,9 @@ export default function TodayScreen() {
         if (isMountedRef.current && requestID === loadRequestIDRef.current) {
           setTasks(storedTasks);
           setTaskLoadState('ready');
+          isRefreshingTasksRef.current = false;
+          setIsRefreshingTasks(false);
+          hasLoadedTasksRef.current = true;
         }
 
         return true;
@@ -139,20 +130,28 @@ export default function TodayScreen() {
 
         if (isMountedRef.current && requestID === loadRequestIDRef.current) {
           setTaskLoadState('error');
+          isRefreshingTasksRef.current = false;
+          setIsRefreshingTasks(false);
         }
 
         return false;
       }
     },
-    [db, todayDate],
+    [db],
   );
 
-  useEffect(() => {
-    void loadTasks(true);
-  }, [loadTasks]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadTasks(true);
+
+      return () => {
+        loadRequestIDRef.current += 1;
+      };
+    }, [loadTasks]),
+  );
 
   const lockTask = (taskID: string): boolean => {
-    if (busyTaskIDsRef.current.has(taskID)) {
+    if (isRefreshingTasksRef.current || busyTaskIDsRef.current.has(taskID)) {
       return false;
     }
 
@@ -175,6 +174,13 @@ export default function TodayScreen() {
         return nextIDs;
       });
     }
+  };
+
+  const setTaskEditorDate = (date: Date) => {
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(12, 0, 0, 0);
+    editorScheduledDateRef.current = normalizedDate;
+    setEditorScheduledDate(normalizedDate);
   };
 
   const toggleTask = async (task: PersonalOsTask) => {
@@ -207,16 +213,24 @@ export default function TodayScreen() {
 
     setEditingTaskID(null);
     setEditorInitialValues(DEFAULT_EDITOR_VALUES);
+    setTaskEditorDate(new Date());
     setEditorMode('create');
   };
 
   const openEditEditor = (task: PersonalOsTask) => {
-    if (isSavingTaskRef.current || busyTaskIDsRef.current.has(task.id)) {
+    if (
+      isSavingTaskRef.current ||
+      isRefreshingTasksRef.current ||
+      busyTaskIDsRef.current.has(task.id)
+    ) {
       return;
     }
 
     setEditingTaskID(task.id);
     setEditorInitialValues({ title: task.title, priority: task.priority });
+    setTaskEditorDate(
+      task.scheduledDate ? getLocalDateFromKey(task.scheduledDate) : new Date(),
+    );
     setEditorMode('edit');
   };
 
@@ -236,18 +250,20 @@ export default function TodayScreen() {
 
     const mode = editorMode;
     const taskID = editingTaskID;
+    const todayDate = getLocalDateKey();
+    const operationDate = getLocalDateKey(editorScheduledDateRef.current);
     isSavingTaskRef.current = true;
     setIsSavingTask(true);
 
     try {
       if (mode === 'create') {
-        await createPersonalOsTask(db, values, todayDate);
+        await createPersonalOsTask(db, values, operationDate);
       } else {
         if (!taskID) {
           throw new Error('缺少需要编辑的任务标识。');
         }
 
-        await updatePersonalOsTask(db, taskID, values);
+        await updatePersonalOsTask(db, taskID, values, operationDate);
       }
 
       if (isMountedRef.current) {
@@ -259,6 +275,8 @@ export default function TodayScreen() {
 
       if (!refreshed && isMountedRef.current) {
         Alert.alert('刷新失败', '任务已保存，请重新打开 App 查看最新数据。');
+      } else if (refreshed && operationDate !== todayDate && isMountedRef.current) {
+        Alert.alert('任务已保存', `已保存至 ${operationDate}`);
       }
     } catch (error) {
       console.error(mode === 'create' ? '新增任务失败' : `编辑任务失败：${taskID}`, error);
@@ -302,7 +320,7 @@ export default function TodayScreen() {
   };
 
   const confirmDeleteTask = (task: PersonalOsTask) => {
-    if (busyTaskIDsRef.current.has(task.id)) {
+    if (isRefreshingTasksRef.current || busyTaskIDsRef.current.has(task.id)) {
       return;
     }
 
@@ -412,6 +430,7 @@ export default function TodayScreen() {
               ]}>
               {tasks.map((task, index) => {
                 const isBusy = busyTaskIDs.has(task.id);
+                const isInteractionDisabled = isBusy || isRefreshingTasks;
                 const priorityColor = priorityColors[task.priority];
 
                 return (
@@ -428,8 +447,8 @@ export default function TodayScreen() {
                     <Pressable
                       accessibilityLabel={`${task.title}，${task.completed ? '已完成' : '未完成'}`}
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: task.completed, disabled: isBusy }}
-                      disabled={isBusy}
+                      accessibilityState={{ checked: task.completed, disabled: isInteractionDisabled }}
+                      disabled={isInteractionDisabled}
                       hitSlop={8}
                       onPress={() => void toggleTask(task)}
                       style={({ pressed }) => [
@@ -475,7 +494,7 @@ export default function TodayScreen() {
                     <Pressable
                       accessibilityLabel={`编辑任务：${task.title}`}
                       accessibilityRole="button"
-                      disabled={isBusy}
+                      disabled={isInteractionDisabled}
                       hitSlop={6}
                       onPress={() => openEditEditor(task)}
                       style={({ pressed }) => [
@@ -489,7 +508,7 @@ export default function TodayScreen() {
                     <Pressable
                       accessibilityLabel={`删除任务：${task.title}`}
                       accessibilityRole="button"
-                      disabled={isBusy}
+                      disabled={isInteractionDisabled}
                       hitSlop={6}
                       onPress={() => confirmDeleteTask(task)}
                       style={({ pressed }) => [
@@ -537,8 +556,11 @@ export default function TodayScreen() {
         initialValues={editorInitialValues}
         mode={editorMode ?? 'create'}
         onCancel={closeEditor}
+        onSelectScheduledDate={setTaskEditorDate}
         onSave={(values) => void saveTask(values)}
         saving={isSavingTask}
+        scheduledDate={editorScheduledDate}
+        showScheduledDate
         visible={editorMode !== null}
       />
     </>

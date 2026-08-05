@@ -1,16 +1,15 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
-  const isDark = useColorScheme() === 'dark';
   const colors = {
-    background: isDark ? '#0D1117' : '#F5F7FA',
-    border: isDark ? '#30363D' : '#E4E7EC',
-    accent: isDark ? '#79A7FF' : '#2563EB',
-    secondary: isDark ? '#9DA7B3' : '#667085',
-    surface: isDark ? '#161B22' : '#FFFFFF',
-    text: isDark ? '#F0F3F6' : '#17202E',
+    background: '#F5F7FA',
+    border: '#E4E7EC',
+    accent: '#2563EB',
+    secondary: '#667085',
+    surface: '#FFFFFF',
+    text: '#17202E',
   };
 
   return (
