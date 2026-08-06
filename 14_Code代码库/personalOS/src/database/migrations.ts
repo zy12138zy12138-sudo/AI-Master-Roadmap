@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { getLocalDateKey } from '@/src/utils/local-date';
 
 export const DATABASE_NAME = 'personal-os.db';
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 export const PERSONAL_OS_PROJECT_ID = 'project-personal-os-mvp';
 
 type SeedTask = {
@@ -234,6 +234,37 @@ async function migrateFromVersion2To3(db: SQLiteDatabase): Promise<void> {
   });
 }
 
+async function migrateFromVersion3To4(db: SQLiteDatabase): Promise<void> {
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.execAsync(`
+      CREATE TABLE IF NOT EXISTS weekly_goals (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        week_start_date TEXT NOT NULL,
+        goal_text TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+          ON UPDATE CASCADE
+          ON DELETE CASCADE
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_weekly_goals_project_week
+        ON weekly_goals(project_id, week_start_date);
+    `);
+
+    const foreignKeyViolations = await txn.getAllAsync<ForeignKeyViolation>(
+      'PRAGMA foreign_key_check(weekly_goals)',
+    );
+
+    if (foreignKeyViolations.length > 0) {
+      throw new Error('数据库升级后检测到周目标项目关系异常。');
+    }
+
+    await txn.execAsync('PRAGMA user_version = 4;');
+  });
+}
+
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA journal_mode = WAL;');
   await db.execAsync('PRAGMA foreign_keys = ON;');
@@ -260,6 +291,11 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   if (currentVersion === 2) {
     await migrateFromVersion2To3(db);
     currentVersion = 3;
+  }
+
+  if (currentVersion === 3) {
+    await migrateFromVersion3To4(db);
+    currentVersion = 4;
   }
 
   if (currentVersion !== DATABASE_VERSION) {

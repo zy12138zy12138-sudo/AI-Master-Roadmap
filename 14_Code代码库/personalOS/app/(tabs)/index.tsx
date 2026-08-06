@@ -18,6 +18,7 @@ import {
   DEFAULT_TASK_PRIORITY,
   deletePersonalOsTask,
   getPersonalOsTasks,
+  rollOverOverduePersonalOsTasks,
   type PersonalOsTask,
   type TaskEditorValues,
   type TaskPriority,
@@ -100,7 +101,7 @@ export default function TodayScreen() {
   }, []);
 
   const loadTasks = useCallback(
-    async (showLoading: boolean): Promise<boolean> => {
+    async (showLoading: boolean, rollOverOverdue = false): Promise<boolean> => {
       const requestID = ++loadRequestIDRef.current;
       const todayDate = getLocalDateKey();
 
@@ -114,6 +115,10 @@ export default function TodayScreen() {
       }
 
       try {
+        if (rollOverOverdue) {
+          await rollOverOverduePersonalOsTasks(db, todayDate);
+        }
+
         const storedTasks = await getPersonalOsTasks(db, todayDate);
 
         if (isMountedRef.current && requestID === loadRequestIDRef.current) {
@@ -142,7 +147,7 @@ export default function TodayScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadTasks(true);
+      void loadTasks(true, true);
 
       return () => {
         loadRequestIDRef.current += 1;

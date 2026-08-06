@@ -13,21 +13,29 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { TaskEditorModal } from '@/components/task-editor-modal';
+import { WeeklyPlanView } from '@/components/weekly-plan-view';
 import {
   createPersonalOsTask,
   DEFAULT_TASK_PRIORITY,
   deletePersonalOsTask,
   getPersonalOsTasks,
+  rollOverOverduePersonalOsTasks,
   type PersonalOsTask,
   type TaskEditorValues,
   type TaskPriority,
   updatePersonalOsTask,
   updateTaskCompleted,
 } from '@/src/database/tasks';
-import { getLocalDateFromKey, getLocalDateKey } from '@/src/utils/local-date';
+import {
+  getLocalDateFromKey,
+  getLocalDateKey,
+  normalizeLocalDate,
+  shiftLocalDate,
+} from '@/src/utils/local-date';
 
 type TaskLoadState = 'loading' | 'ready' | 'error';
 type EditorMode = 'create' | 'edit';
+type PlanViewMode = 'day' | 'week';
 
 const DEFAULT_EDITOR_VALUES: TaskEditorValues = {
   title: '',
@@ -58,18 +66,6 @@ const PALETTE = {
 
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
-function normalizeLocalDate(date: Date): Date {
-  const normalizedDate = new Date(date);
-  normalizedDate.setHours(12, 0, 0, 0);
-  return normalizedDate;
-}
-
-function shiftLocalDate(date: Date, days: number): Date {
-  const nextDate = normalizeLocalDate(date);
-  nextDate.setDate(nextDate.getDate() + days);
-  return nextDate;
-}
-
 function formatSelectedDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAYS[date.getDay()]}`;
 }
@@ -84,6 +80,7 @@ export default function PlanScreen() {
     P3: { background: palette.p3Background, text: palette.p3Text },
   };
   const [selectedDate, setSelectedDate] = useState(() => normalizeLocalDate(new Date()));
+  const [viewMode, setViewMode] = useState<PlanViewMode>('day');
   const selectedDateKey = getLocalDateKey(selectedDate);
   const isToday = selectedDateKey === getLocalDateKey();
   const [tasks, setTasks] = useState<PersonalOsTask[]>([]);
@@ -98,6 +95,7 @@ export default function PlanScreen() {
   const [isSavingTask, setIsSavingTask] = useState(false);
   const selectedDateRef = useRef(selectedDate);
   const selectedDateKeyRef = useRef(selectedDateKey);
+  const viewModeRef = useRef<PlanViewMode>(viewMode);
   const editorScheduledDateRef = useRef(editorScheduledDate);
   const busyTaskIDsRef = useRef<Set<string>>(new Set());
   const isSavingTaskRef = useRef(false);
@@ -109,6 +107,7 @@ export default function PlanScreen() {
 
   selectedDateRef.current = selectedDate;
   selectedDateKeyRef.current = selectedDateKey;
+  viewModeRef.current = viewMode;
   editorScheduledDateRef.current = editorScheduledDate;
 
   useEffect(() => {
@@ -121,7 +120,11 @@ export default function PlanScreen() {
   }, []);
 
   const loadTasks = useCallback(
-    async (dateKey: string, showLoading: boolean): Promise<boolean> => {
+    async (
+      dateKey: string,
+      showLoading: boolean,
+      rollOverOverdue = false,
+    ): Promise<boolean> => {
       const requestID = ++loadRequestIDRef.current;
       const isCurrentDate = () => selectedDateKeyRef.current === dateKey;
 
@@ -135,6 +138,10 @@ export default function PlanScreen() {
       }
 
       try {
+        if (rollOverOverdue) {
+          await rollOverOverduePersonalOsTasks(db, getLocalDateKey());
+        }
+
         const storedTasks = await getPersonalOsTasks(db, dateKey);
 
         if (
@@ -174,7 +181,10 @@ export default function PlanScreen() {
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
-      void loadTasks(selectedDateKeyRef.current, true);
+
+      if (viewModeRef.current === 'day') {
+        void loadTasks(selectedDateKeyRef.current, true, true);
+      }
 
       return () => {
         isFocusedRef.current = false;
@@ -206,6 +216,25 @@ export default function PlanScreen() {
 
   const changeDateBy = (days: number) => {
     selectDate(shiftLocalDate(selectedDateRef.current, days));
+  };
+
+  const selectViewMode = (mode: PlanViewMode) => {
+    if (mode === viewModeRef.current) {
+      return;
+    }
+
+    viewModeRef.current = mode;
+    setViewMode(mode);
+
+    if (mode === 'day' && isFocusedRef.current) {
+      void loadTasks(selectedDateKeyRef.current, true, true);
+    }
+  };
+
+  const openDayFromWeek = (date: Date) => {
+    selectDate(date);
+    viewModeRef.current = 'day';
+    setViewMode('day');
   };
 
   const setTaskEditorDate = (date: Date) => {
@@ -414,9 +443,41 @@ export default function PlanScreen() {
         style={[styles.safeArea, { backgroundColor: palette.background }]}
         edges={['top']}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={[styles.title, { color: palette.text }]}>计划</Text>
+          <View style={styles.screenHeader}>
+            <Text style={[styles.title, { color: palette.text }]}>计划</Text>
+            <View
+              accessibilityRole="tablist"
+              style={[styles.viewToggle, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+              {(['day', 'week'] as const).map((mode) => {
+                const selected = viewMode === mode;
 
-          <View
+                return (
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    key={mode}
+                    onPress={() => selectViewMode(mode)}
+                    style={({ pressed }) => [
+                      styles.viewToggleButton,
+                      selected ? { backgroundColor: palette.accent } : undefined,
+                      pressed ? styles.pressed : undefined,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.viewToggleText,
+                        { color: selected ? palette.onAccent : palette.secondaryText },
+                      ]}>
+                      {mode === 'day' ? '日视图' : '周视图'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {viewMode === 'day' ? (
+            <>
+              <View
             style={[
               styles.dateCard,
               { backgroundColor: palette.surface, borderColor: palette.border },
@@ -478,9 +539,9 @@ export default function PlanScreen() {
                 <MaterialIcons name="chevron-right" size={20} color={palette.accent} />
               </Pressable>
             </View>
-          </View>
+              </View>
 
-          <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
               <Text style={[styles.sectionTitle, { color: palette.text }]}>当日任务</Text>
               <Text style={[styles.taskCount, { color: palette.secondaryText }]}>
@@ -501,9 +562,9 @@ export default function PlanScreen() {
               <MaterialIcons name="add" size={19} color={palette.onAccent} />
               <Text style={[styles.addButtonText, { color: palette.onAccent }]}>新增任务</Text>
             </Pressable>
-          </View>
+              </View>
 
-          <View style={styles.taskContent}>
+              <View style={styles.taskContent}>
             {taskLoadState === 'loading' ? (
               <View
                 style={[
@@ -525,7 +586,7 @@ export default function PlanScreen() {
                 <Text style={[styles.statusText, { color: palette.secondaryText }]}>请检查后重新加载</Text>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => void loadTasks(selectedDateKeyRef.current, true)}
+                  onPress={() => void loadTasks(selectedDateKeyRef.current, true, true)}
                   style={({ pressed }) => [
                     styles.retryButton,
                     { backgroundColor: palette.accentSoft },
@@ -646,7 +707,11 @@ export default function PlanScreen() {
               </View>
             ) : null}
 
-          </View>
+              </View>
+            </>
+          ) : (
+            <WeeklyPlanView onSelectDate={openDayFromWeek} />
+          )}
         </ScrollView>
       </SafeAreaView>
 
@@ -674,10 +739,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
   },
+  screenHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   title: {
     fontSize: 34,
     fontWeight: '700',
     letterSpacing: -0.5,
+  },
+  viewToggle: {
+    borderRadius: 11,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: 3,
+  },
+  viewToggleButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  viewToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   dateCard: {
     borderRadius: 16,

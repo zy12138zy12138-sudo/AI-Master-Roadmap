@@ -54,6 +54,10 @@ type TaskScheduleRow = {
   scheduled_date: string | null;
 };
 
+type OverdueTaskRow = {
+  id: string;
+};
+
 function normalizeTaskTitle(title: string): string {
   const normalizedTitle = title.trim();
 
@@ -123,12 +127,133 @@ export async function getPersonalOsTasks(
        WHEN 'P3' THEN 3
        ELSE 4
      END ASC,
-     sort_order ASC`,
+     sort_order ASC,
+     id ASC`,
     PERSONAL_OS_PROJECT_ID,
     scheduledDate,
   );
 
   return rows.map(mapTaskRow);
+}
+
+export async function getPersonalOsTasksByDateRange(
+  db: SQLiteDatabase,
+  startDate: string,
+  endDateExclusive: string,
+): Promise<PersonalOsTask[]> {
+  assertLocalDateKey(startDate);
+  assertLocalDateKey(endDateExclusive);
+
+  if (startDate >= endDateExclusive) {
+    throw new Error('任务日期范围无效。');
+  }
+
+  const rows = await db.getAllAsync<TaskRow>(
+    `SELECT
+      id,
+      project_id,
+      title,
+      priority,
+      completed,
+      scheduled_date,
+      sort_order,
+      created_at,
+      updated_at
+     FROM tasks
+     WHERE project_id = ?
+       AND scheduled_date >= ?
+       AND scheduled_date < ?
+     ORDER BY scheduled_date ASC,
+       CASE priority
+         WHEN 'P0' THEN 0
+         WHEN 'P1' THEN 1
+         WHEN 'P2' THEN 2
+         WHEN 'P3' THEN 3
+         ELSE 4
+       END ASC,
+       sort_order ASC,
+       id ASC`,
+    PERSONAL_OS_PROJECT_ID,
+    startDate,
+    endDateExclusive,
+  );
+
+  return rows.map(mapTaskRow);
+}
+
+export async function rollOverOverduePersonalOsTasks(
+  db: SQLiteDatabase,
+  todayDate: string,
+): Promise<number> {
+  assertLocalDateKey(todayDate);
+
+  let rolledOverCount = 0;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const overdueTasks = await txn.getAllAsync<OverdueTaskRow>(
+      `SELECT id
+       FROM tasks
+       WHERE project_id = ?
+         AND scheduled_date < ?
+         AND completed = 0
+       ORDER BY scheduled_date ASC,
+         CASE priority
+           WHEN 'P0' THEN 0
+           WHEN 'P1' THEN 1
+           WHEN 'P2' THEN 2
+           WHEN 'P3' THEN 3
+           ELSE 4
+         END ASC,
+         sort_order ASC,
+         id ASC`,
+      PERSONAL_OS_PROJECT_ID,
+      todayDate,
+    );
+
+    if (overdueTasks.length === 0) {
+      return;
+    }
+
+    const sortOrderRow = await txn.getFirstAsync<NextSortOrderRow>(
+      `SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_sort_order
+       FROM tasks
+       WHERE project_id = ?
+         AND scheduled_date = ?`,
+      PERSONAL_OS_PROJECT_ID,
+      todayDate,
+    );
+
+    if (!sortOrderRow) {
+      throw new Error('无法确定今日顺延任务的排序。');
+    }
+
+    const updatedAt = new Date().toISOString();
+    let nextSortOrder = sortOrderRow.next_sort_order;
+
+    for (const task of overdueTasks) {
+      const result = await txn.runAsync(
+        `UPDATE tasks
+         SET scheduled_date = ?, sort_order = ?, updated_at = ?
+         WHERE id = ?
+           AND project_id = ?
+           AND scheduled_date < ?
+           AND completed = 0`,
+        todayDate,
+        nextSortOrder,
+        updatedAt,
+        task.id,
+        PERSONAL_OS_PROJECT_ID,
+        todayDate,
+      );
+
+      if (result.changes === 1) {
+        rolledOverCount += 1;
+        nextSortOrder += 1;
+      }
+    }
+  });
+
+  return rolledOverCount;
 }
 
 export async function createPersonalOsTask(
