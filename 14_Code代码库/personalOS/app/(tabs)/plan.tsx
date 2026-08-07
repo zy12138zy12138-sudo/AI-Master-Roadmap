@@ -98,6 +98,7 @@ export default function PlanScreen() {
   const viewModeRef = useRef<PlanViewMode>(viewMode);
   const editorScheduledDateRef = useRef(editorScheduledDate);
   const busyTaskIDsRef = useRef<Set<string>>(new Set());
+  const isHistoryToggleConfirmationOpenRef = useRef(false);
   const isSavingTaskRef = useRef(false);
   const isDateSwitchingRef = useRef(false);
   const hasLoadedTasksRef = useRef(false);
@@ -269,7 +270,7 @@ export default function PlanScreen() {
     }
   };
 
-  const toggleTask = async (task: PersonalOsTask) => {
+  const persistTaskCompletion = async (task: PersonalOsTask) => {
     if (!lockTask(task.id)) {
       return;
     }
@@ -292,6 +293,48 @@ export default function PlanScreen() {
     } finally {
       unlockTask(task.id);
     }
+  };
+
+  const toggleTask = (task: PersonalOsTask) => {
+    const isHistoricalCompletedTask =
+      task.completed &&
+      task.scheduledDate !== null &&
+      task.scheduledDate < getLocalDateKey();
+
+    if (!isHistoricalCompletedTask) {
+      void persistTaskCompletion(task);
+      return;
+    }
+
+    if (
+      isHistoryToggleConfirmationOpenRef.current ||
+      isDateSwitchingRef.current ||
+      busyTaskIDsRef.current.has(task.id)
+    ) {
+      return;
+    }
+
+    isHistoryToggleConfirmationOpenRef.current = true;
+    const closeConfirmation = () => {
+      isHistoryToggleConfirmationOpenRef.current = false;
+    };
+
+    Alert.alert(
+      '确认取消完成',
+      '这是历史已完成任务。取消完成后将改变任务记录；如该日已保存复盘，已保存的统计不会随之更新。是否继续？',
+      [
+        { text: '取消', style: 'cancel', onPress: closeConfirmation },
+        {
+          text: '继续',
+          style: 'destructive',
+          onPress: () => {
+            closeConfirmation();
+            void persistTaskCompletion(task);
+          },
+        },
+      ],
+      { cancelable: true, onDismiss: closeConfirmation },
+    );
   };
 
   const openCreateEditor = () => {

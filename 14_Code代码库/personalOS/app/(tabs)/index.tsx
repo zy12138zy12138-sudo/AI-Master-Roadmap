@@ -72,6 +72,11 @@ export default function TodayScreen() {
     P3: { background: palette.p3Background, text: palette.p3Text },
   };
   const [tasks, setTasks] = useState<PersonalOsTask[]>([]);
+  const todayDateKey = getLocalDateKey();
+  const todayFocusTask = tasks.find(
+    (task) =>
+      task.scheduledDate === todayDateKey && task.priority === 'P0' && !task.completed,
+  );
   const [taskLoadState, setTaskLoadState] = useState<TaskLoadState>('loading');
   const [isRefreshingTasks, setIsRefreshingTasks] = useState(false);
   const [busyTaskIDs, setBusyTaskIDs] = useState<Set<string>>(() => new Set());
@@ -366,7 +371,9 @@ export default function TodayScreen() {
             </View>
             <View style={styles.focusTextContainer}>
               <Text style={[styles.eyebrow, { color: palette.accent }]}>今日重点</Text>
-              <Text style={[styles.focusTitle, { color: palette.text }]}>完成 Personal OS MVP Day 1</Text>
+              <Text style={[styles.focusTitle, { color: palette.text }]}>
+                {todayFocusTask?.title ?? '今日暂无 P0 重点任务'}
+              </Text>
             </View>
           </View>
 
